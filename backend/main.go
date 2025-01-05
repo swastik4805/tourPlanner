@@ -23,8 +23,9 @@ type Tour struct {
 }
 
 var dbName = "tourPlanner"
-var colName = "tours"
-var collection *mongo.Collection
+
+var tourCollection *mongo.Collection
+var deletedCollection *mongo.Collection
 
 func init() {
 	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
@@ -34,14 +35,15 @@ func init() {
 		return
 	}
 	println("Mongo db connected")
-	collection = client.Database(dbName).Collection(colName)
+	tourCollection = client.Database(dbName).Collection("tours")
+	deletedCollection = client.Database(dbName).Collection("deletedTours")
 	println("collection instance in ready")
 }
 
 func CreateTour(w http.ResponseWriter, r *http.Request) {
 	var tour Tour
 	_ = json.NewDecoder(r.Body).Decode(&tour)
-	inserted, err := collection.InsertOne(context.Background(), tour)
+	inserted, err := tourCollection.InsertOne(context.Background(), tour)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -57,7 +59,7 @@ func UpdateTour(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&tour)
 	filter := bson.M{"_id": id}
 	update := bson.M{"$set": tour}
-	updated, err := collection.UpdateOne(context.Background(), filter, update)
+	updated, err := tourCollection.UpdateOne(context.Background(), filter, update)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -65,9 +67,34 @@ func UpdateTour(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("updated one tour", updated)
 }
 
+func deleteTour(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := primitive.ObjectIDFromHex(params["id"])
+	filter := bson.M{"_id": id}
+	var tour Tour
+	err2 := tourCollection.FindOne(context.Background(), filter).Decode(&tour)
+	if err2 != nil {
+		http.Error(w, "problem in err2", http.StatusBadRequest)
+		return
+	}
+	deleted, err := tourCollection.DeleteOne(context.Background(), filter)
+	if err != nil {
+		http.Error(w, "problem in err", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("deleted one tour", deleted)
+	inserted, err1 := deletedCollection.InsertOne(context.Background(), tour)
+	if err1 != nil {
+		http.Error(w, "problem in err1", http.StatusBadRequest)
+		return
+	}
+	fmt.Println("inserted one tour", inserted.InsertedID)
+}
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/createTour", CreateTour).Methods("POST")
 	r.HandleFunc("/updateTour/{id}", UpdateTour).Methods("PUT")
+	r.HandleFunc("/deleteTour/{id}", deleteTour).Methods("DELETE")
 	http.ListenAndServe(":8080", r)
 }
