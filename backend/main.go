@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Tour struct {
@@ -36,24 +38,36 @@ func init() {
 	println("collection instance in ready")
 }
 
-func insertOneTour(tour Tour) {
+func CreateTour(w http.ResponseWriter, r *http.Request) {
+	var tour Tour
+	_ = json.NewDecoder(r.Body).Decode(&tour)
 	inserted, err := collection.InsertOne(context.Background(), tour)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 	fmt.Println("inserted one tour", inserted.InsertedID)
+	json.NewEncoder(w).Encode(tour)
 }
 
-func CreateTour(w http.ResponseWriter, r *http.Request) {
+func UpdateTour(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	id, _ := primitive.ObjectIDFromHex(params["id"])
 	var tour Tour
 	_ = json.NewDecoder(r.Body).Decode(&tour)
-	insertOneTour(tour)
-	json.NewEncoder(w).Encode(tour)
+	filter := bson.M{"_id": id}
+	update := bson.M{"$set": tour}
+	updated, err := collection.UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	fmt.Println("updated one tour", updated)
 }
 
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/createTour", CreateTour).Methods("POST")
+	r.HandleFunc("/updateTour/{id}", UpdateTour).Methods("PUT")
 	http.ListenAndServe(":8080", r)
 }
