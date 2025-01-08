@@ -52,6 +52,7 @@ func init() {
 func CreateTour(w http.ResponseWriter, r *http.Request) {
 	var tour Tour
 	_ = json.NewDecoder(r.Body).Decode(&tour)
+	tour.CreatedAt = time.Now()
 	inserted, err := tourCollection.InsertOne(context.Background(), tour)
 	if err != nil {
 		log.Fatal(err)
@@ -127,11 +128,39 @@ func AddUserToRoute(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func removeUserFromTour(w http.ResponseWriter, r *http.Request) {
+	//get the tour_id from the url
+	params := mux.Vars(r)
+	tour_id, err2 := primitive.ObjectIDFromHex(params["tour_id"])
+	if err2 != nil {
+		fmt.Println("some problem in parsing tour_id")
+		return
+	}
+	//get the id of the user from the body
+	var userID primitive.ObjectID
+	err := json.NewDecoder(r.Body).Decode(&userID)
+	fmt.Println(userID)
+	if err != nil {
+		fmt.Println("some problem with the request data")
+		return
+	}
+	//find the tour with the tour_id
+	filter := bson.M{"_id": tour_id}
+	update := bson.M{"$pull": bson.M{"user_ids": userID}}
+	deleted, err1 := tourCollection.UpdateOne(context.TODO(), filter, update)
+	if err1 != nil {
+		fmt.Println("some error occured while removing from db")
+		return
+	}
+	fmt.Println("removed user", deleted)
+}
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/createTour", CreateTour).Methods("POST")
 	r.HandleFunc("/updateTour/{id}", UpdateTour).Methods("PUT")
 	r.HandleFunc("/deleteTour/{id}", deleteTour).Methods("DELETE")
 	r.HandleFunc("/addUserToTour/{tour_id}", AddUserToRoute).Methods("POST")
+	r.HandleFunc("/removeUserFromTour/{tour_id}", removeUserFromTour).Methods("DELETE")
 	http.ListenAndServe(":8080", r)
 }
